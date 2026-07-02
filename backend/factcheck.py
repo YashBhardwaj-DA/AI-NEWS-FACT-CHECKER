@@ -45,7 +45,7 @@ Provide your verdict as JSON per the system instructions."""
 def check_claim(claim: str, matched_sources: List[Article]) -> CheckResponse:
     user_msg = _build_user_message(claim, matched_sources)
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key="
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
         "contents": [{"parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_msg}]}],
         "generationConfig": {"maxOutputTokens": 500, "temperature": 0.2},
