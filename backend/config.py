@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6KPLzWepKBEbL7E_9kfIUC1vDU8Isjuj0b5wb6_qC6AUg")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 
