@@ -25,7 +25,7 @@ async def test_gemini():
     if key == "NOT SET":
         return {"error": "GEMINI_API_KEY not set"}
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
     payload = {"contents": [{"parts": [{"text": "Say hello in one word"}]}]}
     
     try:
