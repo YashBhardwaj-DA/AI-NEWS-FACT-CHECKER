@@ -17,7 +17,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+@app.get("/test-gemini")
+async def test_gemini():
+    import httpx
+    import os
+    key = os.getenv("GEMINI_API_KEY", "NOT SET")
+    if key == "NOT SET":
+        return {"error": "GEMINI_API_KEY not set"}
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={key}"
+    payload = {"contents": [{"parts": [{"text": "Say hello in one word"}]}]}
+    
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, json=payload)
+            return {"status": resp.status_code, "body": resp.json()}
+    except Exception as e:
+        return {"error": str(e)}
 @app.get("/")
 def root():
     return {"status": "ok", "service": "NewsCheck API"}
