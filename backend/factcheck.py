@@ -1,19 +1,9 @@
-"""
-Sends a user claim + cross-referenced source context to Claude for a grounded verdict.
-
-Important design choice: we don't just ask Claude "is this true?" in a vacuum.
-We give it the actual matching headlines we found via crossref.py, and ask it to
-reason over THAT evidence. This is more defensible than a bare LLM opinion, and
-makes the "fake news" judgment auditable - you can see exactly what evidence it used.
-"""
 import json
+import httpx
 from typing import List
-from anthropic import Anthropic
 
 from models import Article, CheckResponse
-from config import ANTHROPIC_API_KEY, CLAUDE_MODEL
-
-client = Anthropic(api_key=ANTHROPIC_API_KEY)
+from config import GEMINI_API_KEY
 
 SYSTEM_PROMPT = """You are a careful news fact-checking assistant. You will be given:
 1. A claim submitted by a user
@@ -26,24 +16,23 @@ Respond ONLY with valid JSON, no markdown fences, no preamble, in this exact sha
 {
   "verdict": "Likely True" | "Likely False" | "Unverified" | "Misleading" | "Needs Context",
   "confidence": "High" | "Medium" | "Low",
-  "reasoning": "2-4 sentences explaining the verdict, referencing the source evidence if any was provided"
+  "reasoning": "2-4 sentences explaining the verdict"
 }
 
 Rules:
-- If no matching sources were found at all, lean toward "Unverified" with Low/Medium confidence rather than guessing.
-- If multiple independent sources corroborate the claim, that increases confidence in "Likely True".
-- If the claim contains exaggeration or missing context even if technically rooted in something real, use "Misleading".
-- Never fabricate sources or facts not given to you.
-"""
+- If no matching sources were found, lean toward Unverified with Low confidence.
+- If multiple independent sources corroborate the claim, confidence in Likely True increases.
+- If the claim contains exaggeration or missing context, use Misleading.
+- Never fabricate sources or facts not given to you."""
 
 
 def _build_user_message(claim: str, matched_sources: List[Article]) -> str:
     if matched_sources:
         sources_text = "\n".join(
-            f"- [{a.source}] {a.title} ({a.link})" for a in matched_sources
+            f"- [{a.source}] {a.title}" for a in matched_sources
         )
     else:
-        sources_text = "(No matching headlines found in aggregated sources.)"
+        sources_text = "(No matching headlines found.)"
 
     return f"""Claim to check: "{claim}"
 
@@ -56,16 +45,18 @@ Provide your verdict as JSON per the system instructions."""
 def check_claim(claim: str, matched_sources: List[Article]) -> CheckResponse:
     user_msg = _build_user_message(claim, matched_sources)
 
-    response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=500,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-    )
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AQ.Ab8RN6KPLzWepKBEbL7E_9kfIUC1vDU8Isjuj0b5wb6_qC6AUg"
+    payload = {
+        "contents": [{"parts": [{"text": SYSTEM_PROMPT + "\n\n" + user_msg}]}],
+        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.2},
+    }
 
-    raw_text = "".join(block.text for block in response.content if hasattr(block, "text")).strip()
+    with httpx.Client(timeout=30.0) as client:
+        resp = client.post(url, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
 
-    # Defensive parsing in case the model wraps in fences despite instructions
+    raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
     cleaned = raw_text.replace("```json", "").replace("```", "").strip()
 
     try:
@@ -74,7 +65,7 @@ def check_claim(claim: str, matched_sources: List[Article]) -> CheckResponse:
         parsed = {
             "verdict": "Unverified",
             "confidence": "Low",
-            "reasoning": "Could not parse model response. Raw output: " + raw_text[:300],
+            "reasoning": "Could not parse model response: " + raw_text[:200],
         }
 
     distinct_sources = len(set(a.source for a in matched_sources))
